@@ -5,7 +5,6 @@ import os
 import json
 from pydub import AudioSegment
 from tqdm import tqdm
-from datasets import load_dataset
 
 def diarized_audio(data_jsonl, output_dir="data"):
     os.makedirs(output_dir, exist_ok=True)
@@ -30,18 +29,27 @@ def diarized_audio(data_jsonl, output_dir="data"):
             with ProgressHook() as hook:
                 output = pipeline(audio_path, hook=hook)
 
-            for i, (turn, speaker) in enumerate(output.speaker_diarization):
+            speaker_map = {}
+            next_speaker_id = 0
+
+            for i, (turn, speaker_label) in enumerate(output.speaker_diarization):
+                # Map speaker label to an integer
+                if speaker_label not in speaker_map:
+                    speaker_map[speaker_label] = next_speaker_id
+                    next_speaker_id += 1
+                speaker_id = speaker_map[speaker_label]
+
                 start_ms = int(turn.start * 1000)
                 end_ms = int(turn.end * 1000)
                 segment_audio = audio[start_ms:end_ms]
-                segment_filename = f"{os.path.splitext(item['audiofilename'])[0]}_seg{i:03d}.wav"
+                segment_filename = f"{os.path.splitext(os.path.basename(item['audio_path']))[0]}_seg{i:03d}.wav"
                 segment_path = os.path.join(output_dir, segment_filename)
                 segment_audio.export(segment_path, format="wav")
 
+                # Write JSONL in the exact format required by processor
                 f_out.write(json.dumps({
-                    "text": f"Speaker {speaker}: {item['text']}",
+                    "text": f"Speaker {speaker_id}: {item['text']}",
                     "audio": segment_path
                 }, ensure_ascii=False) + "\n")
 
             pbar.update(1)
-
